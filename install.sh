@@ -466,9 +466,10 @@ function passwd() {
                 ;;
             esac
         done
+        log "$TXT_SET_PANEL_PASSWORD $DEFAULT_PASSWORD): "
         printf '\n' >&2
     else
-        read -s -p "Enter Password: " reply
+        read -s -p "$TXT_SET_PANEL_PASSWORD: $DEFAULT_PASSWORD):" reply
         printf '\n' >&2
     fi
 }
@@ -477,7 +478,7 @@ function Set_Password(){
     DEFAULT_PASSWORD=$(cat /dev/urandom | head -n 16 | md5sum | head -c 10)
 
     while true; do
-        log "$TXT_SET_PANEL_PASSWORD $DEFAULT_PASSWORD): "
+        
         passwd
         PANEL_PASSWORD=$reply
         if [[ "$PANEL_PASSWORD" == "" ]];then
