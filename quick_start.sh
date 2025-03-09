@@ -158,8 +158,8 @@ function install_panel() {
     tar zxvf "$package_file_name"
     cd "1panel-${VERSION}-linux-${architecture}"
     if [ "$BRANCH" == "2" ]; then
-        download_file https://raw.githubusercontent.com/gcsong023/wrt_installer/wrt_1panel/install.sh install.sh
-        download_file https://raw.githubusercontent.com/gcsong023/wrt_installer/wrt_1panel/1pctl 1pctl
+        download_file https://raw.githubusercontent.com/gcsong023/wrt_installer/1panel/install.sh install.sh
+        download_file https://raw.githubusercontent.com/gcsong023/wrt_installer/1panel/1pctl 1pctl
         sed -i "s/ORIGINAL_VERSION=version/ORIGINAL_VERSION=${VERSION}/g" 1pctl
     fi
     chmod +x install.sh && chmod +x 1panel && chmod +x 1pctl
