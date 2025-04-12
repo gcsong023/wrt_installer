@@ -1,5 +1,4 @@
 #!/bin/bash
-set -eo pipefail
 
 action=$1
 target=$2
@@ -48,19 +47,57 @@ function usage() {
     echo "  restore             $TXT_PANEL_SERVICE_RESTORE"
 }
 
+_service_manager() {
+    local service_name="1panel"
+    if command -v systemctl &>/dev/null; then
+        service_manager="systemctl"
+        service_target="${service_name}.service"
+    elif command -v rc-service &>/dev/null; then
+        service_manager="openrc"
+        service_target="${service_name}d"
+    else
+        service_manager="sysvinit"
+        service_target="${service_name}d"
+    fi
+}
+
 _service_cmd() {
     local cmd=$1 success_msg=$2 error_msg=$3
-    if ! service 1paneld "$cmd" 2>/dev/null; then
-        if ! systemctl "$cmd" 1panel.service; then
-            echo "$error_msg"
+    _service_manager
+    case $service_manager in
+    systemctl)
+        if ! systemctl "$cmd" "$service_target" 2>/dev/null; then
+            echo "$error_msg" >&2
             exit 1
         fi
+        ;;
+    openrc)
+        if ! rc-service "$service_target" "$cmd" 2>/dev/null; then
+           echo "$error_msg" >&2
+           exit 1
+        fi
+        ;;
+    *)
+        if ! service "$service_target" "$cmd" 2>/dev/null; then
+           echo "$error_msg" >&2
+           exit 1
+        fi
+        ;;
+    esac
+    [[ -n "$success_msg" ]] && echo "$success_msg"
+}
+_safe_remove() {
+    local path=$1
+    if [[ -e "$path" ]]; then
+        rm -rf -- "$path" || {
+            echo "Failed to remove: $path" >&2
+            exit 1
+        }
     fi
-    echo "$success_msg"
 }
 
 function status() {
-    _service_cmd "status" "" "$TXT_PANEL_SERVICE_STATUS : $TXT_FAILED_MESSAGE"
+    _service_cmd "status" "" ""
 }
 
 function start() {
@@ -77,48 +114,70 @@ function restart() {
 
 function uninstall() {
     check_root
+    local yn
     read -p "$TXT_PANEL_SERVICE_UNINSTALL_NOTICE : " yn
-    if [ "$yn" == "Y" ] || [ "$yn" == "y" ]; then
-        echo -e "$TXT_PANEL_SERVICE_UNINSTALL_START"
-        echo -e ""
-        echo -e "1) $TXT_PANEL_SERVICE_UNINSTALL_STOP"
-        if command -v opkg &>/dev/null;then
-            service 1paneld stop
+    case "${yn,,}" in  
+        y)
+            echo "$TXT_PANEL_SERVICE_UNINSTALL_START"
+            _service_manager          
+            echo -e "1) $TXT_PANEL_SERVICE_UNINSTALL_STOP"
+            case $service_manager in
+                systemctl)
+                    systemctl stop 1panel.service
+                    systemctl disable 1panel.service >/dev/null 2>&1
+                    ;;
+                openrc)
+                    rc-service 1paneld stop
+                    rc-update del 1paneld >/dev/null 2>&1
+                    ;;
+                *)
+                    service 1paneld stop
+                    ;;
+            esac
             echo -e "2) $TXT_PANEL_SERVICE_UNINSTALL_REMOVE"
-            rm -rf $BASE_DIR/1panel /usr/local/bin/{1pctl,1panel,lang} 
+            _safe_remove "${BASE_DIR}/1panel"
+            _safe_remove "/usr/local/bin/1pctl" 
+            _safe_remove "/usr/local/bin/1panel"
+            _safe_remove "/usr/local/bin/lang"
+            _safe_remove "/usr/bin/1panel"
+            _safe_remove "/usr/bin/1pctl"
             echo -e "3) $TXT_PANEL_SERVICE_UNINSTALL_REMOVE_CONFIG"
-            /etc/init.d/1paneld disable 
-            rm -rf /etc/init.d/1paneld
-        else
-            systemctl stop 1panel.service
-            systemctl disable 1panel.service >/dev/null 2>&1
-            echo -e "2) $TXT_PANEL_SERVICE_UNINSTALL_REMOVE"
-            rm -rf $BASE_DIR/1panel /usr/local/bin/{1pctl,1panel} /etc/systemd/system/1panel.service /usr/local/bin/lang
-            echo -e "3) $TXT_PANEL_SERVICE_UNINSTALL_REMOVE_CONFIG"
-            systemctl daemon-reload
-            systemctl reset-failed
-        fi
-        echo -e "4) $TXT_PANEL_SERVICE_UNINSTALL_REMOVE_SUCCESS"
-    else
-        exit 0
-    fi
+            case $service_manager in
+                systemctl)
+                    _safe_remove "/etc/systemd/system/1panel.service"
+                    systemctl daemon-reload
+                    systemctl reset-failed
+                    ;;
+                openrc)
+                    _safe_remove "/etc/init.d/1paneld"
+                    ;;
+                *)
+                    _safe_remove "/etc/init.d/1paneld"
+                    ;;
+            esac
+            echo -e "4) $TXT_PANEL_SERVICE_UNINSTALL_REMOVE_SUCCESS"
+            ;;
+        *)
+            exit 0
+            ;;
+    esac
 }
 function user-info() {
-    1panel -l $LANGUAGE user-info
+    1panel  user-info
 }
 
 function listen-ip() {
     case "${target}" in
         ipv4)
-            1panel -l $LANGUAGE listen-ip ipv4
+            1panel listen-ip ipv4
             restart
             ;;
         ipv6)
-            1panel -l $LANGUAGE listen-ip ipv6
+            1panel  listen-ip ipv6
             restart
             ;;
         *)
-            1panel -l $LANGUAGE listen-ip
+            1panel  listen-ip
             ;;
     esac
 }
@@ -127,41 +186,41 @@ function restore() {
     read -p "$TXT_PANEL_SERVICE_RESTORE_NOTICE : " yn
     if [ "$yn" == "Y" ] || [ "$yn" == "y" ]; then
         echo -e ""
-        1panel -l $LANGUAGE restore
+        1panel  restore
         if ! service 1paneld reload; then
         systemctl daemon-reload
         fi
         restart
-        1panel -l $LANGUAGE version
+        1panel  version
     else
         exit 0
     fi
 }
 
 function version() {
-    1panel -l $LANGUAGE version
+    1panel  version
 }
 
 function reset() {
     case "${target}" in
         domain)
-            1panel -l $LANGUAGE reset domain
+            1panel  reset domain
             ;;
         entrance)
-            1panel -l $LANGUAGE reset entrance
+            1panel  reset entrance
             ;;
         https)
-            1panel -l $LANGUAGE reset https
+            1panel  reset https
             restart
             ;;
         ips)
-            1panel -l $LANGUAGE reset ips
+            1panel  reset ips
             ;;
         mfa)
-            1panel -l $LANGUAGE reset mfa
+            1panel  reset mfa
             ;;
         *)
-            1panel -l $LANGUAGE reset
+            1panel  reset
             ;;
     esac
 }
@@ -169,16 +228,16 @@ function reset() {
 function update() {
     case "${target}" in
         username)
-            1panel -l $LANGUAGE update username
+            1panel  update username
             ;;
         password)
-            1panel -l $LANGUAGE update password
+            1panel  update password
             ;;
         port)
-            1panel -l $LANGUAGE update port
+            1panel  update port
             ;;
         *)
-            1panel -l $LANGUAGE update
+            1panel  update
             ;;
     esac
 }
